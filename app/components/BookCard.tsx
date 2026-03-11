@@ -1,15 +1,16 @@
 'use client';
 
 import { Book } from '@/types/book';
-import { Edit2, Trash2, BookOpen } from 'lucide-react';
+import { Edit2, Trash2, BookOpen, Eye } from 'lucide-react';
 
 interface BookCardProps {
   book: Book;
+  isAdmin?: boolean;
   onEdit: (book: Book) => void;
   onDelete: (id: number) => void;
 }
 
-export default function BookCard({ book, onEdit, onDelete }: BookCardProps) {
+export default function BookCard({ book, isAdmin = false, onEdit, onDelete }: BookCardProps) {
   return (
     <div className="group relative bg-white rounded-lg shadow-sm hover:shadow-md transition-all duration-200 p-5 border-l-4 border-[#3A8B95] hover:border-l-[6px] overflow-hidden">
       {/* Decorative corner accent */}
@@ -52,22 +53,43 @@ export default function BookCard({ book, onEdit, onDelete }: BookCardProps) {
         </p>
       </div>
 
-      {/* Action Buttons */}
-      <div className="flex gap-2 pt-4 border-t border-slate-100 relative z-10">
-        <button
-          onClick={() => onEdit(book)}
-          className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-[#3A8B95] text-white rounded hover:bg-[#2D6E78] transition-colors font-medium text-sm"
-        >
-          <Edit2 className="w-4 h-4" />
-          <span>Edit</span>
-        </button>
-        <button
-          onClick={() => onDelete(book.id)}
-          className="flex items-center justify-center gap-2 px-4 py-2 bg-rose-600 text-white rounded hover:bg-rose-700 transition-colors font-medium text-sm"
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
-      </div>
+      {/* Action Buttons — admin only, or read-only indicator for member */}
+      {isAdmin ? (
+        <div className="flex gap-2 pt-4 border-t border-slate-100 relative z-10">
+          <button
+            onClick={() => onEdit(book)}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-[#3A8B95] text-white rounded hover:bg-[#2D6E78] transition-colors font-medium text-sm"
+          >
+            <Edit2 className="w-4 h-4" />
+            <span>Edit</span>
+          </button>
+          <button
+            onClick={() => onDelete(book.id)}
+            className="flex items-center justify-center gap-2 px-4 py-2 bg-rose-600 text-white rounded hover:bg-rose-700 transition-colors font-medium text-sm"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between pt-4 border-t border-slate-100 relative z-10">
+          <span className="flex items-center gap-1.5 text-xs text-slate-400">
+            <Eye className="w-3.5 h-3.5" />
+            Mode Baca
+          </span>
+          <span
+            className={`flex items-center gap-1 text-xs font-semibold ${
+              book.status === 'Tersedia'
+                ? 'text-emerald-600'
+                : 'text-rose-500'
+            }`}
+          >
+            <span className={`w-1.5 h-1.5 rounded-full inline-block ${
+              book.status === 'Tersedia' ? 'bg-emerald-500' : 'bg-rose-400'
+            }`} />
+            {book.status === 'Tersedia' ? 'Dapat Dipinjam' : 'Sedang Dipinjam'}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

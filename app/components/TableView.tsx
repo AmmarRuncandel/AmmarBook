@@ -5,13 +5,14 @@ import { Edit2, Trash2 } from 'lucide-react';
 
 interface TableViewProps {
   books: Book[];
+  isAdmin?: boolean;
   onEdit: (book: Book) => void;
   onDelete: (id: number) => void;
   currentPage?: number;
   itemsPerPage?: number;
 }
 
-export default function TableView({ books, onEdit, onDelete, currentPage = 1, itemsPerPage = 9 }: TableViewProps) {
+export default function TableView({ books, isAdmin = false, onEdit, onDelete, currentPage = 1, itemsPerPage = 9 }: TableViewProps) {
   const startIndex = (currentPage - 1) * itemsPerPage;
   
   return (
@@ -35,9 +36,11 @@ export default function TableView({ books, onEdit, onDelete, currentPage = 1, it
               <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                 Status
               </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                Aksi
-              </th>
+              {isAdmin && (
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  Aksi
+                </th>
+              )}
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-slate-100">
@@ -69,23 +72,25 @@ export default function TableView({ books, onEdit, onDelete, currentPage = 1, it
                     {book.status}
                   </span>
                 </td>
-                <td className="px-4 py-3 whitespace-nowrap text-sm">
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => onEdit(book)}
-                      className="flex items-center gap-1 px-3 py-1.5 bg-[#3A8B95] text-white rounded hover:bg-[#2D6E78] transition-colors font-medium text-xs"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => onDelete(book.id)}
-                      className="flex items-center justify-center p-1.5 bg-rose-600 text-white rounded hover:bg-rose-700 transition-colors"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </td>
+                {isAdmin && (
+                  <td className="px-4 py-3 whitespace-nowrap text-sm">
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => onEdit(book)}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-[#3A8B95] text-white rounded hover:bg-[#2D6E78] transition-colors font-medium text-xs"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => onDelete(book.id)}
+                        className="flex items-center justify-center p-1.5 bg-rose-600 text-white rounded hover:bg-rose-700 transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

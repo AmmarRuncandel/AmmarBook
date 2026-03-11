@@ -9,7 +9,7 @@ import BookModal from './components/BookModal';
 import DeleteConfirmDialog from './components/DeleteConfirmDialog';
 import TableView from './components/TableView';
 import { SkeletonCard, SkeletonTable } from './components/SkeletonLoader';
-import { Plus, Search, BookMarked, TrendingUp, Package, BookOpen, X, Grid3x3, List, ChevronLeft, ChevronRight, LogOut } from 'lucide-react';
+import { Plus, Search, BookMarked, TrendingUp, Package, BookOpen, X, Grid3x3, List, ChevronLeft, ChevronRight, LogOut, ShieldCheck, Info } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
 export default function Home() {
@@ -40,7 +40,10 @@ export default function Home() {
   const totalPages = Math.ceil(totalBooks / itemsPerPage);
 
   // Current logged-in user
-  const [currentUser, setCurrentUser] = useState<{ id: string; name: string; email: string } | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: string; name: string; email: string; role?: string } | null>(null);
+
+  // Derived: true when logged-in user is admin
+  const isAdmin = currentUser?.role === 'admin';
 
   // Auth check — redirect to /login if no token
   useEffect(() => {
@@ -350,6 +353,18 @@ export default function Home() {
                   Halo, <strong className="text-white">{currentUser.name}</strong>
                 </span>
               )}
+              {/* Role badge */}
+              {currentUser?.role && (
+                <span
+                  className={`hidden sm:inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
+                    isAdmin
+                      ? 'bg-amber-400/25 border-amber-300/50 text-amber-100'
+                      : 'bg-white/15 border-white/30 text-white/90'
+                  }`}
+                >
+                  {isAdmin ? '★ Admin' : '◎ Member'}
+                </span>
+              )}
               <button
                 onClick={handleLogout}
                 className="flex items-center gap-2 px-4 py-2 bg-white/15 border border-white/25 text-white rounded-lg hover:bg-white/25 transition-colors font-medium text-sm"
@@ -415,7 +430,27 @@ export default function Home() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Controls Section */}
+          {/* Read-only info bar — visible for member role only */}
+          {currentUser && !isAdmin && (
+            <div className="flex items-center gap-2 px-4 py-2.5 bg-sky-50 border border-sky-200 rounded-lg text-sky-700 text-sm mb-4">
+              <Info className="w-4 h-4 shrink-0" />
+              <span>
+                Anda login sebagai <strong>Member</strong> — hanya dapat melihat &amp; mencari koleksi buku.
+              </span>
+            </div>
+          )}
+
+          {/* Admin indicator bar */}
+          {currentUser && isAdmin && (
+            <div className="flex items-center gap-2 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-700 text-sm mb-4">
+              <ShieldCheck className="w-4 h-4 shrink-0" />
+              <span>
+                Anda login sebagai <strong>Admin</strong> — dapat mengelola seluruh koleksi buku.
+              </span>
+            </div>
+          )}
+
+          {/* Controls Section */}
         <div className="space-y-4 mb-6">
           {/* Top Row: Search, Filter, View Toggle */}
           <div className="flex flex-col lg:flex-row gap-4">
@@ -486,14 +521,16 @@ export default function Home() {
               </button>
             </div>
 
-            {/* Add Button */}
-            <button
-              onClick={openCreateModal}
-              className="flex items-center justify-center gap-2 px-6 py-3 bg-[#3A8B95] text-white rounded-lg hover:bg-[#2D6E78] active:scale-95 transition-all font-semibold shadow-sm whitespace-nowrap"
-            >
-              <Plus className="w-5 h-5" />
-              <span>Tambah Buku</span>
-            </button>
+            {/* Add Button — admin only */}
+            {isAdmin && (
+              <button
+                onClick={openCreateModal}
+                className="flex items-center justify-center gap-2 px-6 py-3 bg-[#3A8B95] text-white rounded-lg hover:bg-[#2D6E78] active:scale-95 transition-all font-semibold shadow-sm whitespace-nowrap"
+              >
+                <Plus className="w-5 h-5" />
+                <span>Tambah Buku</span>
+              </button>
+            )}
           </div>
 
           {/* Info Row */}
@@ -534,6 +571,7 @@ export default function Home() {
                   <BookCard
                     key={book.id}
                     book={book}
+                    isAdmin={isAdmin}
                     onEdit={openEditModal}
                     onDelete={openDeleteDialog}
                   />
@@ -542,6 +580,7 @@ export default function Home() {
             ) : (
               <TableView
                 books={books}
+                isAdmin={isAdmin}
                 onEdit={openEditModal}
                 onDelete={openDeleteDialog}
                 currentPage={currentPage}
@@ -625,14 +664,16 @@ export default function Home() {
               <BookMarked className="w-10 h-10 text-slate-400" />
             </div>
             <h3 className="text-2xl font-bold text-slate-800 mb-2">
-              {searchQuery || statusFilter !== 'Semua' ? 'Tidak ada hasil' : 'Belum ada buku'}
+            {searchQuery || statusFilter !== 'Semua' ? 'Tidak ada hasil' : isAdmin ? 'Belum ada buku' : 'Koleksi kosong'}
             </h3>
             <p className="text-slate-600 mb-6">
               {searchQuery || statusFilter !== 'Semua'
                 ? 'Coba ubah kata kunci pencarian atau filter Anda'
-                : 'Mulai tambahkan buku ke perpustakaan Anda'}
+                : isAdmin
+                ? 'Mulai tambahkan buku ke perpustakaan Anda'
+                : 'Belum ada buku tersedia di perpustakaan saat ini'}
             </p>
-            {!searchQuery && statusFilter === 'Semua' && (
+            {isAdmin && !searchQuery && statusFilter === 'Semua' && (
               <button
                 onClick={openCreateModal}
                 className="inline-flex items-center gap-2 px-6 py-3 bg-[#3A8B95] text-white rounded-lg hover:bg-[#2D6E78] transition-colors font-semibold"
