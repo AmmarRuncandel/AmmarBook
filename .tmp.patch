@@ -1,0 +1,24 @@
+*** Begin Patch
+*** Update File: d:\Project-Collage\ammarbook\app\api\auth\refresh\route.ts
+@@
+-    // Get user
+-    const { data: user } = await supabaseServer
+-      .from('users')
+-      .select('id, name, email, created_at')
+-      .eq('id', payload.userId)
+-      .single();
++    // Get user with role for access token payload
++    const { data: user } = await supabaseServer
++      .from('users')
++      .select('id, name, email, role, created_at')
++      .eq('id', payload.userId)
++      .single();
+@@
+-    const newAccessToken = await signAccessToken({ userId: user.id, email: user.email, name: user.name });
++    const newAccessToken = await signAccessToken({
++      userId: user.id,
++      email: user.email,
++      name: user.name,
++      role: user.role,
++    });
+*** End Patch

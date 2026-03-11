@@ -1,4 +1,5 @@
-import { supabase } from '@/lib/supabase';
+import { supabaseServer } from '@/lib/supabase-server';
+import { auditLog } from '@/lib/audit-log';
 import { NextRequest, NextResponse } from 'next/server';
 
 // GET /api/books/[id] - Get a single book by ID
@@ -19,7 +20,7 @@ export async function GET(
       );
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseServer
       .from('books')
       .select('*')
       .eq('id', Number(id))
@@ -64,6 +65,27 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const userId = request.headers.get('x-user-id') ?? undefined;
+    const userEmail = request.headers.get('x-user-email') ?? undefined;
+
+    // Role check: only admin can update
+    const userRole = request.headers.get('x-user-role');
+    if (userRole !== 'admin') {
+      auditLog({
+        action: 'update',
+        resource: 'books',
+        status: 'denied',
+        userId,
+        userEmail,
+        role: userRole ?? 'unknown',
+        message: 'Non-admin attempted to update a book',
+      });
+      return NextResponse.json(
+        { success: false, message: 'Akses ditolak: Hanya Admin yang dapat melakukan tindakan ini' },
+        { status: 403 }
+      );
+    }
+
     const { id } = await params;
 
     if (!id || isNaN(Number(id))) {
@@ -97,7 +119,7 @@ export async function PUT(
     if (published_year) updateData.published_year = published_year;
     if (status) updateData.status = status;
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseServer
       .from('books')
       .update(updateData)
       .eq('id', Number(id))
@@ -115,6 +137,17 @@ export async function PUT(
       );
     }
 
+    auditLog({
+      action: 'update',
+      resource: 'books',
+      resourceId: String(data[0].id),
+      status: 'success',
+      userId,
+      userEmail,
+      role: userRole ?? 'admin',
+      message: 'Book updated',
+    });
+
     return NextResponse.json(
       {
         success: true,
@@ -124,6 +157,12 @@ export async function PUT(
       { status: 200 }
     );
   } catch (error) {
+    auditLog({
+      action: 'update',
+      resource: 'books',
+      status: 'failed',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
     console.error('Error updating book:', error);
     return NextResponse.json(
       {
@@ -142,6 +181,27 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const userId = request.headers.get('x-user-id') ?? undefined;
+    const userEmail = request.headers.get('x-user-email') ?? undefined;
+
+    // Role check: only admin can delete
+    const userRole = request.headers.get('x-user-role');
+    if (userRole !== 'admin') {
+      auditLog({
+        action: 'delete',
+        resource: 'books',
+        status: 'denied',
+        userId,
+        userEmail,
+        role: userRole ?? 'unknown',
+        message: 'Non-admin attempted to delete a book',
+      });
+      return NextResponse.json(
+        { success: false, message: 'Akses ditolak: Hanya Admin yang dapat melakukan tindakan ini' },
+        { status: 403 }
+      );
+    }
+
     const { id } = await params;
 
     if (!id || isNaN(Number(id))) {
@@ -154,7 +214,7 @@ export async function DELETE(
       );
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseServer
       .from('books')
       .delete()
       .eq('id', Number(id))
@@ -172,6 +232,17 @@ export async function DELETE(
       );
     }
 
+    auditLog({
+      action: 'delete',
+      resource: 'books',
+      resourceId: String(data[0].id),
+      status: 'success',
+      userId,
+      userEmail,
+      role: userRole ?? 'admin',
+      message: 'Book deleted',
+    });
+
     return NextResponse.json(
       {
         success: true,
@@ -181,6 +252,12 @@ export async function DELETE(
       { status: 200 }
     );
   } catch (error) {
+    auditLog({
+      action: 'delete',
+      resource: 'books',
+      status: 'failed',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
     console.error('Error deleting book:', error);
     return NextResponse.json(
       {

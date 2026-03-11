@@ -2,17 +2,18 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
-import { supabase } from '@/lib/supabase';
+import { useRouter } from 'next/navigation';
 import { Book } from '@/types/book';
 import BookCard from './components/BookCard';
 import BookModal from './components/BookModal';
 import DeleteConfirmDialog from './components/DeleteConfirmDialog';
 import TableView from './components/TableView';
 import { SkeletonCard, SkeletonTable } from './components/SkeletonLoader';
-import { Plus, Search, BookMarked, TrendingUp, Package, BookOpen, X, Grid3x3, List, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Search, BookMarked, TrendingUp, Package, BookOpen, X, Grid3x3, List, ChevronLeft, ChevronRight, LogOut } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
 export default function Home() {
+  const router = useRouter();
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -38,47 +39,118 @@ export default function Home() {
   // Calculate pagination
   const totalPages = Math.ceil(totalBooks / itemsPerPage);
 
+  // Current logged-in user
+  const [currentUser, setCurrentUser] = useState<{ id: string; name: string; email: string } | null>(null);
+
+  // Auth check — redirect to /login if no token
+  useEffect(() => {
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      router.replace('/login');
+      return;
+    }
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      try { setCurrentUser(JSON.parse(storedUser)); } catch {}
+    }
+  }, [router]);
+
+  // Authenticated fetch — auto-refreshes token on 401
+  const authFetch = useCallback(async (url: string, options: RequestInit = {}) => {
+    const makeRequest = (token: string | null) =>
+      fetch(url, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(options.headers as Record<string, string> || {}),
+        },
+      });
+
+    let token = localStorage.getItem('access_token');
+    let res = await makeRequest(token);
+
+    // Try refresh if 401
+    if (res.status === 401) {
+      const refreshToken = localStorage.getItem('refresh_token');
+      if (refreshToken) {
+        try {
+          const refreshRes = await fetch('/api/auth/refresh', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refreshToken }),
+          });
+          if (refreshRes.ok) {
+            const refreshData = await refreshRes.json();
+            token = refreshData.data.accessToken;
+            localStorage.setItem('access_token', refreshData.data.accessToken);
+            localStorage.setItem('refresh_token', refreshData.data.refreshToken);
+            localStorage.setItem('user', JSON.stringify(refreshData.data.user));
+            setCurrentUser(refreshData.data.user);
+            res = await makeRequest(token);
+          }
+        } catch {}
+      }
+    }
+
+    // Still 401 — force logout
+    if (res.status === 401) {
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+      localStorage.removeItem('user');
+      router.replace('/login');
+      throw new Error('Unauthorized');
+    }
+
+    return res;
+  }, [router]);
+
+  // Logout
+  const handleLogout = async () => {
+    const refreshToken = localStorage.getItem('refresh_token');
+    if (refreshToken) {
+      try {
+        await fetch('/api/auth/logout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+        });
+      } catch {}
+    }
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('user');
+    router.replace('/login');
+  };
+
   // Fetch books with pagination, search, and filter
   const fetchBooks = useCallback(async () => {
     try {
       setLoading(true);
-      
-      // Build query
-      let query = supabase
-        .from('books')
-        .select('*', { count: 'exact' });
 
-      // Apply search filter
-      if (searchQuery.trim()) {
-        query = query.or(`title.ilike.%${searchQuery}%,author.ilike.%${searchQuery}%`);
-      }
+      const params = new URLSearchParams({
+        page: String(currentPage),
+        limit: String(itemsPerPage),
+      });
+      if (searchQuery.trim()) params.append('search', searchQuery);
+      if (statusFilter !== 'Semua') params.append('status', statusFilter);
 
-      // Apply status filter
-      if (statusFilter !== 'Semua') {
-        query = query.eq('status', statusFilter);
-      }
+      const res = await authFetch(`/api/books?${params}`);
+      const json = await res.json();
 
-      // Get total count for this filtered query
-      const { count } = await query;
-      setTotalBooks(count || 0);
+      if (!json.success) throw new Error(json.message);
 
-      // Apply pagination and ordering
-      const from = (currentPage - 1) * itemsPerPage;
-      const to = from + itemsPerPage - 1;
-      
-      const { data, error } = await query
-        .order('id', { ascending: false })
-        .range(from, to);
-
-      if (error) throw error;
-      setBooks(data || []);
+      setBooks(json.data || []);
+      setTotalBooks(json.pagination.total || 0);
     } catch (error) {
-      console.error('Error fetching books:', error);
-      toast.error('Gagal memuat data buku');
+      if ((error as Error).message !== 'Unauthorized') {
+        console.error('Error fetching books:', error);
+        toast.error('Gagal memuat data buku');
+      }
     } finally {
       setLoading(false);
     }
-  }, [currentPage, searchQuery, statusFilter]);
+  }, [currentPage, searchQuery, statusFilter, authFetch]);
 
   useEffect(() => {
     fetchBooks();
@@ -99,37 +171,15 @@ export default function Home() {
 
   const fetchStats = useCallback(async () => {
     try {
-      const { count: total } = await supabase
-        .from('books')
-        .select('*', { count: 'exact', head: true });
-
-      const { count: available } = await supabase
-        .from('books')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'Tersedia');
-
-      const { count: borrowed } = await supabase
-        .from('books')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'Dipinjam');
-
-      const { data: latestBook } = await supabase
-        .from('books')
-        .select('published_year')
-        .order('published_year', { ascending: false })
-        .limit(1)
-        .single();
-
-      setStats({
-        total: total || 0,
-        available: available || 0,
-        borrowed: borrowed || 0,
-        latestYear: latestBook?.published_year || new Date().getFullYear(),
-      });
+      const res = await authFetch('/api/books/stats');
+      const json = await res.json();
+      if (json.success) setStats(json.data);
     } catch (error) {
-      console.error('Error fetching stats:', error);
+      if ((error as Error).message !== 'Unauthorized') {
+        console.error('Error fetching stats:', error);
+      }
     }
-  }, []);
+  }, [authFetch]);
 
   useEffect(() => {
     fetchStats();
@@ -138,70 +188,70 @@ export default function Home() {
   // Create book
   const handleCreateBook = async (bookData: Partial<Book>) => {
     try {
-      const { error } = await supabase.from('books').insert([bookData]);
-      
-      if (error) throw error;
-      
+      const res = await authFetch('/api/books', {
+        method: 'POST',
+        body: JSON.stringify(bookData),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.message);
       toast.success('Buku berhasil ditambahkan');
       setIsModalOpen(false);
       fetchBooks();
       fetchStats();
     } catch (error) {
-      console.error('Error creating book:', error);
-      toast.error('Gagal menambahkan buku');
+      if ((error as Error).message !== 'Unauthorized') {
+        console.error('Error creating book:', error);
+        toast.error('Gagal menambahkan buku');
+      }
     }
   };
 
   // Update book
   const handleUpdateBook = async (bookData: Partial<Book>) => {
     if (!selectedBook) return;
-
     try {
-      const { error } = await supabase
-        .from('books')
-        .update(bookData)
-        .eq('id', selectedBook.id);
-
-      if (error) throw error;
-
+      const res = await authFetch(`/api/books/${selectedBook.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(bookData),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.message);
       toast.success('Buku berhasil diperbarui');
       setIsModalOpen(false);
       setSelectedBook(null);
       fetchBooks();
       fetchStats();
     } catch (error) {
-      console.error('Error updating book:', error);
-      toast.error('Gagal memperbarui buku');
+      if ((error as Error).message !== 'Unauthorized') {
+        console.error('Error updating book:', error);
+        toast.error('Gagal memperbarui buku');
+      }
     }
   };
 
   // Delete book
   const handleDeleteBook = async () => {
     if (!bookToDelete) return;
-
     try {
-      const { error } = await supabase
-        .from('books')
-        .delete()
-        .eq('id', bookToDelete.id);
-
-      if (error) throw error;
-
+      const res = await authFetch(`/api/books/${bookToDelete.id}`, {
+        method: 'DELETE',
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.message);
       toast.success('Buku berhasil dihapus');
       setIsDeleteDialogOpen(false);
       setBookToDelete(null);
-      
-      // If deleting the last item on the current page and not on page 1, go to previous page
       if (books.length === 1 && currentPage > 1) {
         setCurrentPage(prev => prev - 1);
       } else {
         fetchBooks();
       }
-      
       fetchStats();
     } catch (error) {
-      console.error('Error deleting book:', error);
-      toast.error('Gagal menghapus buku');
+      if ((error as Error).message !== 'Unauthorized') {
+        console.error('Error deleting book:', error);
+        toast.error('Gagal menghapus buku');
+      }
     }
   };
 
@@ -277,23 +327,36 @@ export default function Home() {
         </div>
         
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-7 relative z-10">
-          <div className="flex items-center gap-4 mb-6">
-            <div className="p-1 bg-white/15 rounded-lg border border-white/20">
-              <Image
-                src="/logoAmmarbook.png"
-                alt="AmmarBook Logo"
-                width={80}
-                height={80}
-                className="rounded"
-              />
+          {/* Title & Logout Row */}
+          <div className="flex items-center justify-between gap-4 mb-6">
+            <div className="flex items-center gap-4">
+              <div className="p-1 bg-white/15 rounded-lg border border-white/20">
+                <Image
+                  src="/logoAmmarbook.png"
+                  alt="AmmarBook Logo"
+                  width={80}
+                  height={80}
+                  className="rounded"
+                />
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold tracking-tight">AmmarBook</h1>
+                <p className="text-white/80 text-sm mt-0.5 font-medium">Perpustakaan Pinjam Meminjam</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight">
-                AmmarBook
-              </h1>
-              <p className="text-white/80 text-sm mt-0.5 font-medium">
-                Perpustakaan Pinjam Meminjam
-              </p>
+            <div className="flex items-center gap-3">
+              {currentUser && (
+                <span className="text-white/80 text-sm hidden sm:block">
+                  Halo, <strong className="text-white">{currentUser.name}</strong>
+                </span>
+              )}
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-2 px-4 py-2 bg-white/15 border border-white/25 text-white rounded-lg hover:bg-white/25 transition-colors font-medium text-sm"
+              >
+                <LogOut className="w-4 h-4" />
+                <span className="hidden sm:inline">Logout</span>
+              </button>
             </div>
           </div>
 
@@ -310,7 +373,7 @@ export default function Home() {
                 </div>
               </div>
             </div>
-            
+
             <div className="bg-white/15 backdrop-blur-sm rounded-lg p-4 border border-white/25 hover:bg-white/20 transition-colors">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-white/20 rounded">
@@ -322,7 +385,7 @@ export default function Home() {
                 </div>
               </div>
             </div>
-            
+
             <div className="bg-white/15 backdrop-blur-sm rounded-lg p-4 border border-white/25 hover:bg-white/20 transition-colors">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-white/20 rounded">
@@ -334,7 +397,7 @@ export default function Home() {
                 </div>
               </div>
             </div>
-            
+
             <div className="bg-white/15 backdrop-blur-sm rounded-lg p-4 border border-white/25 hover:bg-white/20 transition-colors">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-white/20 rounded">
