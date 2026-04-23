@@ -24,22 +24,29 @@ export async function GET(request: NextRequest) {
 
     // Simpan state dan flag mobile ke cookie agar bisa dibaca saat callback.
     // Google hanya meneruskan `code` & `state` — custom query param tidak diteruskan.
-    const response = NextResponse.json({ authUrl, success: true });
 
-    response.cookies.set('oauth_state', state, {
+    // Cookie options yang sama untuk kedua mode
+    const cookieOptions = {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      sameSite: 'lax' as const,
       maxAge: 10 * 60, // 10 menit
-    });
+    };
 
-    response.cookies.set('oauth_mobile', isMobile ? 'true' : 'false', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 10 * 60, // 10 menit — sama dengan masa hidup state
-    });
+    if (isMobile) {
+      // Mode Mobile: langsung redirect ke Google agar cookie tersimpan di browser yang sama.
+      // Ini menghindari masalah "Invalid State" karena cookie ditulis pada response redirect,
+      // bukan pada response terpisah yang dibaca oleh HTTP client (Dio/Flutter).
+      const response = NextResponse.redirect(authUrl);
+      response.cookies.set('oauth_state', state, cookieOptions);
+      response.cookies.set('oauth_mobile', 'true', cookieOptions);
+      return response;
+    }
 
+    // Mode Web: kembalikan JSON seperti biasa agar frontend web bisa membaca authUrl.
+    const response = NextResponse.json({ authUrl, success: true });
+    response.cookies.set('oauth_state', state, cookieOptions);
+    response.cookies.set('oauth_mobile', 'false', cookieOptions);
     return response;
   } catch (error) {
     console.error('Google OAuth init error:', error);
