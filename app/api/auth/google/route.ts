@@ -12,6 +12,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Deteksi apakah request datang dari klien mobile (?mobile=true)
+    const isMobile = request.nextUrl.searchParams.get('mobile') === 'true';
+
     // Generate state for CSRF protection
     const state = generateOAuthState();
 
@@ -19,13 +22,22 @@ export async function GET(request: NextRequest) {
     const redirectUri = getCallbackRedirectUri(request);
     const authUrl = buildGoogleAuthUrl(clientId, redirectUri, state);
 
-    // Store state in cookie for validation on callback
+    // Simpan state dan flag mobile ke cookie agar bisa dibaca saat callback.
+    // Google hanya meneruskan `code` & `state` — custom query param tidak diteruskan.
     const response = NextResponse.json({ authUrl, success: true });
+
     response.cookies.set('oauth_state', state, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 10 * 60, // 10 minutes
+      maxAge: 10 * 60, // 10 menit
+    });
+
+    response.cookies.set('oauth_mobile', isMobile ? 'true' : 'false', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 10 * 60, // 10 menit — sama dengan masa hidup state
     });
 
     return response;
